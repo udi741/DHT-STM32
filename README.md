@@ -11,9 +11,10 @@ This is a lightweight and easy-to-use library for interfacing with DHT11 humidit
 
 1. Clone the repository or download the ZIP file.
 2. Add the library files (`dht-stm32.c` and `dht-stm32.h`) to your project and include the `dht-stm32.h` header in your source code to utilize the library functions.
-3. If you're not using STM32CubeMX for project setup, make sure to manually include the necessary STM32 header files (`stm32fxxxx.h`) and related HAL libraries in your project. These files provide the essential definitions and configurations for your STM32 microcontroller.
-4. Configure your GPIO pins and timer in your project.
-5. Initialize the DHT sensor using `DHTinit()` function, providing the required GPIO and Timer instances.
+3. Configure the GPIO pin connected to the DHT sensor as an EXTI line triggered by both falling and rising edges.
+4. Configure a Timer which will be used for timing purposes during communication.
+5. If you're not using STM32CubeMX for project setup, make sure to manually include the necessary STM32 header files (`stm32fxxxx.h`) and related HAL libraries in your project. These files provide the essential definitions and configurations for your STM32 microcontroller.
+6. Initialize the DHT sensor using `DHTinit()` function, providing the required GPIO and Timer instances.
 
 ## Usage
 
@@ -22,10 +23,18 @@ This is a lightweight and easy-to-use library for interfacing with DHT11 humidit
 ```c
 #include "dht-stm32.h"
 
-int main(void) {
-    // Initialize your microcontroller's peripherals and clock settings.
+dht_t dht; // Declare dht structure in a scope accessible to relevant functions
 
-    dht_t dht;
+// Callback function when EXTI interrupt occurs
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+    if (GPIO_Pin == dht.pin) {
+        DHTInterruptCallback(&dht);
+    }
+}
+
+int main(void) {
+    // Initialize your microcontroller's peripherals and clock settings
+    // ...
 
     // Configure your GPIO and Timer instances.
     // - `GPIOA`: The GPIO instance to which the DHT sensor's data pin is connected.
@@ -68,7 +77,3 @@ void DHTinit(dht_t* dht, GPIO_TypeDef* gpio, uint16_t gpio_pin, TIM_HandleTypeDe
 - The library supports FreeRTOS (`USINGFREERTOS` defined as 1 in `dht-stm32.h`).
 - Make sure to define the GPIO pin and Timer instance that you plan to use with STM32Cube HAL before initializing the DHT sensor.
 - The library uses GPIO output mode and interrupt-driven input mode to communicate with the DHT sensor.
-
-## Contributors
-
-- [Udi](https://github.com/udi741)
