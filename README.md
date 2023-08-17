@@ -1,6 +1,6 @@
 # DHT STM32 Library
 
-This is a lightweight and easy-to-use library for interfacing with DHT11 humidity and temperature sensor on STM32 microcontrollers.
+This is a lightweight and easy-to-use library for interfacing with DHT11/DHT22 humidity and temperature sensor on STM32 microcontrollers.
 
 ## Features
 
