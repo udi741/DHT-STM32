@@ -1,16 +1,16 @@
 #include "dht-stm32.h"
 
-void DHTinit(dht_t* dht, GPIO_TypeDef* gpio, uint16_t gpio_pin, TIM_HandleTypeDef* timer, uint16_t boardMaxClockFreqMHz)
+void DHTinit(dht_t* dht, GPIO_TypeDef* gpio, uint16_t gpio_pin, TIM_HandleTypeDef* timer, uint16_t timerClockFreqMHz)
 {
 	dht->gpio = gpio;
 	dht->pin = gpio_pin;
 	dht->msgInterruptCnt = 0;
 	dht->timer = timer;
 	DHTConfigureToOutput(dht);
-	// TODO: check if user configed the timer to inc cnt every 1 micro second, and the period is defined to max.
+	// TODO: check if user configured the timer to inc cnt every 1 micro second, and the period is defined to max.
 	// for now - assume that the timer can be configured by the library, but this might affect the users if they are using the timer for multiple things (for exmple, using the timer interrupt)
 	dht->timer->Instance = TIM2;
-  dht->timer->Init.Prescaler = boardMaxClockFreqMHz-1;
+  dht->timer->Init.Prescaler = timerClockFreqMHz-1;
   dht->timer->Init.CounterMode = TIM_COUNTERMODE_UP;
   dht->timer->Init.Period = 65535;
   dht->timer->Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -56,24 +56,29 @@ void DHTConfigureToOutput(dht_t* dht)
 void DHTRequestData(dht_t* dht)
 {
 	DHTConfigureToOutput(dht);
-	HAL_GPIO_WritePin(dht->gpio, dht->pin, GPIO_PIN_RESET); // changing to register direct access operations will be faster
-	osDelay(18); // this wont work if the user will not use freeRTOS. need to wrap it in some DEF that check it.
-	HAL_GPIO_WritePin(dht->gpio, dht->pin, GPIO_PIN_SET); // changing to register direct access operations will be faster
-	DHTSetTimerCnt(dht, 0);
-	while(DHTGetTimerCnt(dht) < 40); // maximum wait time for dht11 - in other sensors the time will be different
+	dht->gpio->ODR &= ~dht->pin;
+	DHTDelay(18);
+	dht->gpio->ODR |= dht->pin;
+	dht->lastCnt = DHTGetTimerCnt(dht);
+	while(measureDeltaUs(dht) < 40); // wait max time, in order to make sure the exti don't catch the host signal change
 	dht->msgInterruptCnt = 0;
-	dht->lastCnt = DHTGetTimerCnt(dht); // if next line will be removed this need to be changed to get current cnt
+	dht->lastCnt = DHTGetTimerCnt(dht);
 	DHTConfigureToInput(dht);
+}
+
+int32_t measureDeltaUs(dht_t* dht)
+{
+	int32_t timeDelta = DHTGetTimerCnt(dht) - dht->lastCnt;
+		if (timeDelta < 0) // protect from negative time
+			timeDelta += 0xFFFF;
+	return timeDelta;
 }
 
 void DHTInterruptCallback(dht_t* dht)
 {
 	if (dht->msgInterruptCnt < sizeof(dht->binaryData)-1)
 	{
-		int32_t timeDelta = DHTGetTimerCnt(dht) - dht->lastCnt;
-		if (timeDelta < 0) // protect from negative time
-			timeDelta += 0xFFFF;
-		dht->binaryData[dht->msgInterruptCnt] = timeDelta;
+		dht->binaryData[dht->msgInterruptCnt] = measureDeltaUs(dht);
 		dht->lastCnt = DHTGetTimerCnt(dht);
 		dht->msgInterruptCnt += 1;
 	}
@@ -86,8 +91,7 @@ bool DHTReadData(dht_t* dht, uint8_t* data)
 	{
 		return false;
 	}
-	dht->size = sizeof(dht->binaryData)-4;
-	for(int i=0; i<dht->size; i+=2)
+	for(int i=0; i<sizeof(dht->binaryData)-4; i+=2)
 	{
 		if (dht->binaryData[i+2] < 40 || dht->binaryData[i+3] < 20 || dht->binaryData[i+3] > 80)
 			return false;
@@ -114,7 +118,7 @@ dhtData_t getDHTMeasurement(dht_t* dht)
 	uint8_t data[5];
 	if (DHTReadData(dht, data) == true)
 	{
-		if (((data[0] + data[1] + data[2] + data[3]) & 0x00ff) == data[4])
+		if (((data[0] + data[1] + data[2] + data[3]) & 0x00FF) == data[4])
 		{
 			dht->data.humidity = (float)(data[0] << 8 | data[1]) / 10.0f;
 			dht->data.temperature = (float)(data[2] << 8 | data[3]) / 10.0f;
